@@ -97,7 +97,7 @@ describe("SLB_Bond contract", function () {
       console.log("transaction hash: " + newBond.hash);
       await newBond.wait();
       expect((await bond.connect(addr1).status()).toString()).to.equal("1");
-      await time.increase(1);
+      await new Promise(resolve => setTimeout(resolve, 10000));
       const bondActive = await bond.connect(addr1).setBondActive();
       await bondActive.wait();
       expect((await bond.connect(addr1).status()).toString()).to.equal("2");
