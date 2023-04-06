@@ -3,9 +3,10 @@ pragma solidity >=0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./device.sol";
 
-contract SLB_Bond is Ownable, Pausable, IoT_Device {
+contract SLB_Bond is Ownable, Pausable, IoT_Device, IERC20 {
     address public verifier;
     address public issuer;
 
@@ -46,7 +47,8 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device {
     uint256 public impactData_3;
 
     mapping(address => uint256) bondsCount;
-    mapping(address => bool[]) fundsClaimed;
+    mapping(address => uint256[]) fundsToClaim;
+    mapping(address => mapping(address => uint256)) private allowances;
 
     BondState public status;
     bool public isReported = false;
@@ -191,11 +193,18 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device {
         require(status == BondState.ISSUED, "Bond status is not Issued.");
         require(block.timestamp < activeDate, "Bond buying window has closed.");
 
-        bondsCount[msg.sender] = bondsCount[msg.sender] + _bondsPurchased;
-
-        for (uint32 i = 0; i <= periods; i++) {
-            fundsClaimed[msg.sender].push(false);
+        if (bondsCount[msg.sender] > 0) {
+            for (uint32 i = 0; i <= periods; i++) {
+                fundsToClaim[msg.sender][i] += _bondsPurchased;
+            }
+        } else {
+            // First time purchase
+            for (uint32 i = 0; i <= periods; i++) {
+                fundsToClaim[msg.sender].push(_bondsPurchased);
+            }
         }
+
+        bondsCount[msg.sender] = bondsCount[msg.sender] + _bondsPurchased;
 
         totalDebt = totalDebt + bondPrice * _bondsPurchased;
 
@@ -347,7 +356,7 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device {
      */
     function claimCoupon(uint256 _claimPeriod) public whenNotPaused {
         require(status == BondState.ACTIVE, "Bond status is not Active.");
-        require(isVerified == true, "Impact data has not been verified.");
+        require(isVerified, "Impact data has not been verified.");
         require(bondsCount[msg.sender] > 0, "No bonds purchased");
         require(
             _claimPeriod <= currentPeriod,
@@ -355,18 +364,15 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device {
         );
 
         // call internal calculation function for value
+        uint256 unclaimedBonds = fundsToClaim[msg.sender][_claimPeriod - 1];
+        require(unclaimedBonds > 0, "No coupons to claim");
         uint256 _value = couponCalculator(bondsCount[msg.sender], _claimPeriod);
 
         //check balance for value at each
-        if (checkBalance(_value) == true) {
-            // check if bond for this buyer has coupon previously claimed?
-            if (fundsClaimed[msg.sender][_claimPeriod - 1] == false) {
-                payable(msg.sender).transfer(_value);
-                fundsClaimed[msg.sender][_claimPeriod - 1] = true;
-                emit ClaimedCoupons(msg.sender, _claimPeriod);
-            } else {
-                revert("Coupon has been claimed.");
-            }
+        if (checkBalance(_value)) {
+            payable(msg.sender).transfer(_value);
+            fundsToClaim[msg.sender][_claimPeriod - 1] = 0;
+            emit ClaimedCoupons(msg.sender, _claimPeriod);
         } else {
             status = BondState.BANKRUPT;
         }
@@ -384,18 +390,16 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device {
         require(bondsCount[msg.sender] > 0, "No bonds purchased");
         require(totalDebt > 0, "Investor has claimed principal.");
 
-        uint256 _value = bondPrice * bondsCount[msg.sender];
+        uint256 totalBondsToClaim = fundsToClaim[msg.sender][currentPeriod];
+        require(totalBondsToClaim > 0, "No principal to claim.");
+        uint256 _value = bondPrice * totalBondsToClaim;
 
         //check balance for value at each
-        if (checkBalance(_value) == true) {
-            if (fundsClaimed[msg.sender][currentPeriod] == false) {
-                payable(msg.sender).transfer(_value);
-                fundsClaimed[msg.sender][currentPeriod] = true;
-                totalDebt = totalDebt - _value;
-                emit ClaimedPrincipal(msg.sender, currentPeriod);
-            } else {
-                revert("Principal has been claimed.");
-            }
+        if (checkBalance(_value)) {
+            payable(msg.sender).transfer(_value);
+            fundsToClaim[msg.sender][currentPeriod] = 0;
+            totalDebt = totalDebt - _value;
+            emit ClaimedPrincipal(msg.sender, currentPeriod);
         } else {
             status = BondState.BANKRUPT;
         }
@@ -462,5 +466,130 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device {
 
     function getBalance() external view returns (uint) {
         return address(this).balance;
+    }
+
+    // ERC20 IMPLEMENTATION
+
+    function totalSupply() external view override returns (uint256) {
+        return totalBondsIssued;
+    }
+
+    function balanceOf(
+        address account
+    ) external view override returns (uint256) {
+        return bondsCount[account];
+    }
+
+    function transfer(
+        address to,
+        uint256 amount
+    ) external override returns (bool) {
+        _transfer(msg.sender, to, amount);
+        return true;
+    }
+
+    function allowance(
+        address owner,
+        address spender
+    ) public view override returns (uint256) {
+        return allowances[owner][spender];
+    }
+
+    function approve(
+        address spender,
+        uint256 amount
+    ) public override returns (bool) {
+        require(
+            msg.sender != address(0),
+            "ERC20: approve from the zero address"
+        );
+        require(spender != address(0), "ERC20: approve to the zero address");
+
+        allowances[msg.sender][spender] = amount;
+        emit Approval(msg.sender, spender, amount);
+        return true;
+    }
+
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    ) external override returns (bool) {
+        _spendAllowance(from, msg.sender, amount);
+        _transfer(from, to, amount);
+        return true;
+    }
+
+    function _spendAllowance(
+        address owner,
+        address spender,
+        uint256 amount
+    ) private {
+        uint256 currentAllowance = allowance(owner, spender);
+        if (currentAllowance != type(uint256).max) {
+            require(
+                currentAllowance >= amount,
+                "ERC20: insufficient allowance"
+            );
+            unchecked {
+                _approve(owner, spender, currentAllowance - amount);
+            }
+        }
+    }
+
+    function _transfer(address from, address to, uint256 amount) private {
+        require(from != address(0), "ERC20: transfer from the zero address");
+        require(to != address(0), "ERC20: transfer to the zero address");
+
+        uint256 fromBalance = bondsCount[from];
+        require(
+            fromBalance >= amount,
+            "ERC20: transfer amount exceeds balance"
+        );
+        require(
+            status == BondState.ISSUED || status == BondState.ACTIVE,
+            "Bonds cannot be transfered during the current state"
+        );
+        require(
+            !_hasUnclaimedFunds(from),
+            "Cannot transfer bonds from an account with unclaimed funds."
+        );
+
+        unchecked {
+            bondsCount[from] = fromBalance - amount;
+            // Overflow not possible: the sum of all balances is capped by totalSupply, and the sum is preserved by
+            // decrementing then incrementing.
+            bondsCount[to] += amount;
+        }
+        if (bondsCount[from] == 0) {
+            delete fundsToClaim[from];
+        }
+
+        emit Transfer(from, to, amount);
+    }
+
+    function _approve(address owner, address spender, uint256 amount) private {
+        require(owner != address(0), "ERC20: approve from the zero address");
+        require(spender != address(0), "ERC20: approve to the zero address");
+
+        allowances[owner][spender] = amount;
+        emit Approval(owner, spender, amount);
+    }
+
+    function _hasUnclaimedFunds(address account) internal view returns (bool) {
+        if (status == BondState.ISSUED) {
+            return false;
+        }
+        require(
+            fundsToClaim[account].length > 0,
+            "Account has not purchased any bonds"
+        );
+
+        for (uint32 i = 0; i < currentPeriod; i++) {
+            if (fundsToClaim[account][i] > 0) {
+                return true;
+            }
+        }
+        return false;
     }
 }
