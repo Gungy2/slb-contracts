@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "compile": "hardhat compile",
-    "test": "hardhat test"
+    "test": "hardhat test",
+    "deploy": "hardhat run --network local scripts/deploy.js"
   },
   "author": "George Ungureanu Vranceanu",
   "license": "MIT",
