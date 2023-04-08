@@ -565,6 +565,17 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device, IERC20 {
             delete fundsToClaim[from];
         }
 
+        if (fundsToClaim[to].length == 0) {
+            for (uint32 i = 0; i <= periods; i++) {
+                fundsToClaim[msg.sender].push(0);
+            }
+        }
+
+        for (uint256 i = currentPeriod; i <= periods; i++) {
+            fundsToClaim[from][i] -= amount;
+            fundsToClaim[to][i] += amount;
+        }
+
         emit Transfer(from, to, amount);
     }
 
@@ -585,7 +596,7 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device, IERC20 {
             "Account has not purchased any bonds"
         );
 
-        for (uint32 i = 0; i < currentPeriod; i++) {
+        for (uint256 i = 0; i < currentPeriod; i++) {
             if (fundsToClaim[account][i] > 0) {
                 return true;
             }
