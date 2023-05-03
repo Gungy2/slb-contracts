@@ -8,14 +8,52 @@ import hardhat from "hardhat";
 const ethers = hardhat.ethers;
 
 async function main() {
+  const myAddress = "0x99D95fD49544De3BE43Bf905a2fc47006C0A4afC";
+
   // Deploy Contract
-  const [owner, addr1, addr2, addr3, addr4, ...addrs] = await ethers.getSigners();
+  const [owner, addr1, addr2, addr3, addr4, ...addrs] =
+    await ethers.getSigners();
+
+  await owner.sendTransaction({
+    to: myAddress,
+    value: ethers.utils.parseEther("1.0"), // Sends exactly 1.0 ether
+  });
 
   const SLB_Bond = await ethers.getContractFactory("SLB_Bond");
   const bond = await SLB_Bond.deploy();
-  console.log(
-    await bond.connect(owner).balanceOf("0x9e5Decd7DE5e12336ef6E10A6d0C28d1938Df8E1")
-  );
+
+  const roles = await bond
+    .connect(owner)
+    .setRoles(addr1.getAddress(), addr2.getAddress());
+  const addFunds = await bond.connect(addr1).fundBond({
+    value: ethers.utils.parseUnits("200", "wei"),
+  });
+  await addFunds.wait();
+  const nowUnix = Math.floor(Date.now() / 1000);
+
+  const newBond = await bond
+    .connect(addr1)
+    .setBond(
+      "Bond 1, KPI: Greenhouse gas emissions",
+      [1, 0, 0],
+      100,
+      1,
+      10,
+      5,
+      100,
+      nowUnix + 50,
+      nowUnix + 100,
+      nowUnix + 150
+    );
+  await newBond.wait();
+
+  const buyBond = await bond.connect(addr3).mintBond(20);
+  await buyBond.wait();
+
+  await bond.connect(addr3).transfer(myAddress, 5);
+
+  console.log(bond.address);
+  console.log("Done");
 }
 
 // We recommend this pattern to be able to use async/await everywhere

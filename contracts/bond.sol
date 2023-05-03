@@ -541,6 +541,11 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device, IERC20 {
         require(from != address(0), "ERC20: transfer from the zero address");
         require(to != address(0), "ERC20: transfer to the zero address");
 
+        if (amount == 0) {
+            emit Transfer(from, to, 0);
+            return;
+        }
+
         uint256 fromBalance = bondsCount[from];
         require(
             fromBalance >= amount,
@@ -561,19 +566,20 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device, IERC20 {
             // decrementing then incrementing.
             bondsCount[to] += amount;
         }
-        if (bondsCount[from] == 0) {
-            delete fundsToClaim[from];
-        }
 
         if (fundsToClaim[to].length == 0) {
             for (uint32 i = 0; i <= periods; i++) {
-                fundsToClaim[msg.sender].push(0);
+                fundsToClaim[to].push(0);
             }
         }
 
         for (uint256 i = currentPeriod; i <= periods; i++) {
             fundsToClaim[from][i] -= amount;
             fundsToClaim[to][i] += amount;
+        }
+
+        if (fromBalance == amount) {
+            delete fundsToClaim[from];
         }
 
         emit Transfer(from, to, amount);
