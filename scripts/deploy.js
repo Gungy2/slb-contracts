@@ -11,8 +11,7 @@ async function main() {
   const myAddress = "0x99D95fD49544De3BE43Bf905a2fc47006C0A4afC";
 
   // Deploy Contract
-  const [owner, addr1, addr2, addr3, addr4, ...addrs] =
-    await ethers.getSigners();
+  const [owner, addr1, addr2, addr3] = await ethers.getSigners();
 
   await owner.sendTransaction({
     to: myAddress,
@@ -51,9 +50,12 @@ async function main() {
   await buyBond.wait();
 
   await bond.connect(addr3).transfer(myAddress, 5);
+  console.log(`Bond address: ${bond.address}`);
 
-  console.log(bond.address);
-  console.log("Done");
+  const stableCoin = await ethers.getContractFactory("StableCoin");
+  const coin = await stableCoin.deploy();
+  await coin.connect(owner).transfer(myAddress, 10 ** 10);
+  console.log(`Stable Coin address: ${coin.address}`);
 }
 
 // We recommend this pattern to be able to use async/await everywhere
