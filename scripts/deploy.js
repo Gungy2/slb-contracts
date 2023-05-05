@@ -55,7 +55,7 @@ async function main() {
   const stableCoin = await ethers.getContractFactory("StableCoin");
   const coin = await stableCoin.deploy();
   await coin.connect(owner).transfer(myAddress, 10 ** 10);
-  console.log(`Stable Coin address: ${coin.address}`);
+  console.log(coin.address);
 }
 
 // We recommend this pattern to be able to use async/await everywhere
