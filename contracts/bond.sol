@@ -468,6 +468,10 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device, IERC20 {
         return address(this).balance;
     }
 
+    function getKPIs() external view returns (KPI[] memory) {
+        return kpis;
+    }
+
     // ERC20 IMPLEMENTATION
 
     function totalSupply() external view override returns (uint256) {
