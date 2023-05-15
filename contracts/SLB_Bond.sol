@@ -4,7 +4,7 @@ pragma solidity >=0.8.0;
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "./device.sol";
+import "./IoT_Device.sol";
 
 contract SLB_Bond is Ownable, Pausable, IoT_Device, IERC20 {
     address public verifier;
