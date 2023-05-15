@@ -52,8 +52,8 @@ async function main() {
   await bond.connect(addr3).transfer(myAddress, 5);
   console.log(`Bond address: ${bond.address}`);
 
-  const stableCoin = await ethers.getContractFactory("StableCoin");
-  const coin = await stableCoin.deploy();
+  const stableCoin = await ethers.getContractFactory("ERC20Test");
+  const coin = await stableCoin.deploy("StableCoin", "STC");
   await coin.connect(owner).transfer(myAddress, 10 ** 10);
   console.log(coin.address);
 }

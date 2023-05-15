@@ -380,6 +380,42 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device, IERC20 {
 
     /**
      * @dev Role: INVESTOR, Bond state: Active
+     * @notice Claim all coupon amounts from bond balance.
+     * If bond balance has insufficient funds, set bond status to Bankrupt.
+     */
+    function claimAllCoupons() public whenNotPaused {
+        require(status == BondState.ACTIVE, "Bond status is not Active.");
+        require(isVerified, "Impact data has not been verified.");
+        require(bondsCount[msg.sender] > 0, "No bonds purchased");
+
+        for (
+            uint256 _claimPeriod = 1;
+            _claimPeriod <= currentPeriod;
+            _claimPeriod++
+        ) {
+            // call internal calculation function for value
+            uint256 unclaimedBonds = fundsToClaim[msg.sender][_claimPeriod - 1];
+            if (unclaimedBonds == 0) {
+                continue;
+            }
+            uint256 _value = couponCalculator(
+                bondsCount[msg.sender],
+                _claimPeriod
+            );
+
+            if (checkBalance(_value)) {
+                payable(msg.sender).transfer(_value);
+                fundsToClaim[msg.sender][_claimPeriod - 1] = 0;
+                emit ClaimedCoupons(msg.sender, _claimPeriod);
+            } else {
+                status = BondState.BANKRUPT;
+                break;
+            }
+        }
+    }
+
+    /**
+     * @dev Role: INVESTOR, Bond state: Active
      * @notice Claim principal amount from bond balance at maturity.
      * If bond balance has insufficient funds, set bond status to Bankrupt.
      */
@@ -556,11 +592,11 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device, IERC20 {
             "ERC20: transfer amount exceeds balance"
         );
         require(
-            status == BondState.ISSUED || status == BondState.ACTIVE,
-            "Bonds cannot be transfered during the current state"
+            status != BondState.PREISSUE,
+            "Bonds cannot be transfered during the preissue state"
         );
         require(
-            !_hasUnclaimedFunds(from),
+            !hasUnclaimedFunds(from),
             "Cannot transfer bonds from an account with unclaimed funds."
         );
 
@@ -597,8 +633,8 @@ contract SLB_Bond is Ownable, Pausable, IoT_Device, IERC20 {
         emit Approval(owner, spender, amount);
     }
 
-    function _hasUnclaimedFunds(address account) internal view returns (bool) {
-        if (status == BondState.ISSUED) {
+    function hasUnclaimedFunds(address account) public view returns (bool) {
+        if (status != BondState.ACTIVE) {
             return false;
         }
         require(
