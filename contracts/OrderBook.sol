@@ -28,6 +28,9 @@ contract OrderBook is IOrderBook, ReentrancyGuard {
     mapping(uint256 => uint8) public sellOrdersInStepCounter;
     uint256 public minSellPrice;
 
+    uint256 private totalSlbsStored;
+    mapping(address => uint256 slbsStored) slbsStored;
+
     /**
      * @notice Constructor
      */
@@ -86,7 +89,7 @@ contract OrderBook is IOrderBook, ReentrancyGuard {
                         amountReflect -= order.amount;
 
                         // settle trade
-                        slbToken.safeTransfer(msg.sender, order.amount);
+                        _sendSlbs(order.maker, msg.sender, order.amount);
                         baseToken.safeTransfer(
                             order.maker,
                             order.amount * sellPricePointer
@@ -100,19 +103,19 @@ contract OrderBook is IOrderBook, ReentrancyGuard {
                             i
                         ];
 
+                        // settle trade
+                        _sendSlbs(order.maker, msg.sender, amountReflect);
+                        baseToken.safeTransfer(
+                            order.maker,
+                            amountReflect * sellPricePointer
+                        );
+
                         sellSteps[sellPricePointer].amount -= amountReflect;
                         sellOrdersInStep[sellPricePointer][i]
                             .amount -= amountReflect;
                         amountReflect = 0;
-
-                        // settle trade
-                        slbToken.safeTransfer(msg.sender, order.amount);
-                        baseToken.safeTransfer(
-                            order.maker,
-                            order.amount * sellPricePointer
-                        );
                     }
-                    i += 1;
+                    i++;
                 }
                 sellPricePointer = higherPrice;
             }
@@ -132,7 +135,7 @@ contract OrderBook is IOrderBook, ReentrancyGuard {
         uint256 price,
         uint256 amountOfSlbToken
     ) external override nonReentrant {
-        slbToken.safeTransferFrom(msg.sender, address(this), amountOfSlbToken);
+        _receiveSlbs(msg.sender, amountOfSlbToken);
         emit PlaceSellOrder(msg.sender, price, amountOfSlbToken);
 
         /**
@@ -171,7 +174,7 @@ contract OrderBook is IOrderBook, ReentrancyGuard {
                         amountReflect -= order.amount;
 
                         // settle trade
-                        slbToken.safeTransfer(order.maker, order.amount);
+                        _sendSlbs(msg.sender, order.maker, order.amount);
                         baseToken.safeTransfer(
                             msg.sender,
                             order.amount * buyPricePointer
@@ -185,19 +188,19 @@ contract OrderBook is IOrderBook, ReentrancyGuard {
                             i
                         ];
 
+                        // settle trade
+                        _sendSlbs(msg.sender, order.maker, amountReflect);
+                        baseToken.safeTransfer(
+                            msg.sender,
+                            amountReflect * buyPricePointer
+                        );
+
                         buySteps[buyPricePointer].amount -= amountReflect;
                         buyOrdersInStep[buyPricePointer][i]
                             .amount -= amountReflect;
                         amountReflect = 0;
-
-                        // settle trade
-                        slbToken.safeTransfer(order.maker, order.amount);
-                        baseToken.safeTransfer(
-                            msg.sender,
-                            order.amount * buyPricePointer
-                        );
                     }
-                    i += 1;
+                    i++;
                 }
                 buyPricePointer = lowerPrice;
             }
@@ -309,5 +312,24 @@ contract OrderBook is IOrderBook, ReentrancyGuard {
                 .higherPrice = price;
             sellSteps[sellPricePointer].lowerPrice = price;
         }
+    }
+
+    function _sendSlbs(address from, address to, uint256 amount) internal {
+        if (slbToken.hasUnclaimedFunds(address(this))) {
+            slbToken.claimAllCoupons();
+        }
+
+        payable(to).transfer(
+            (slbsStored[to] * address(this).balance) / totalSlbsStored
+        );
+        slbToken.safeTransfer(to, amount);
+        totalSlbsStored -= amount;
+        slbsStored[from] -= amount;
+    }
+
+    function _receiveSlbs(address from, uint256 amount) internal {
+        slbToken.safeTransferFrom(from, address(this), amount);
+        totalSlbsStored += amount;
+        slbsStored[from] += amount;
     }
 }

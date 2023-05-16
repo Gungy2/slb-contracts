@@ -9,4 +9,8 @@ contract ERC20Test is ERC20 {
     constructor(string memory name, string memory symbol) ERC20(name, symbol) {
         _mint(msg.sender, _initial_supply);
     }
+
+    function hasUnclaimedFunds(address) public pure returns (bool) {
+        return false;
+    }
 }
