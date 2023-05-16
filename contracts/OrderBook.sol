@@ -5,12 +5,17 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import {IOrderBook} from "./interfaces/IOrderBook.sol";
-import {IOrderBook} from "./interfaces/IOrderBook.sol";
+import {SLB_Bond} from "./SLB_Bond.sol";
 
+/// @title Order Book Solidity
+/// @author sondotpin [Son Pin]
+/// @notice Original source: https://github.com/sondotpin/orderbook
+/// @dev Source code has been modified accordingly to be usable with SLBs
 contract OrderBook is IOrderBook, ReentrancyGuard {
     using SafeERC20 for IERC20;
+    using SafeERC20 for SLB_Bond;
 
-    IERC20 public tradeToken;
+    SLB_Bond public slbToken;
     IERC20 public baseToken;
 
     mapping(uint256 => mapping(uint8 => Order)) public buyOrdersInStep;
@@ -26,8 +31,8 @@ contract OrderBook is IOrderBook, ReentrancyGuard {
     /**
      * @notice Constructor
      */
-    constructor(address _tradeToken, address _baseToken) {
-        tradeToken = IERC20(_tradeToken);
+    constructor(address _slbToken, address _baseToken) {
+        slbToken = SLB_Bond(_slbToken);
         baseToken = IERC20(_baseToken);
     }
 
@@ -36,20 +41,20 @@ contract OrderBook is IOrderBook, ReentrancyGuard {
      */
     function placeBuyOrder(
         uint256 price,
-        uint256 amountOfBaseToken
+        uint256 amountOfSlbToken
     ) external override nonReentrant {
         baseToken.safeTransferFrom(
             msg.sender,
             address(this),
-            amountOfBaseToken
+            price * amountOfSlbToken
         );
-        emit PlaceBuyOrder(msg.sender, price, amountOfBaseToken);
+        emit PlaceBuyOrder(msg.sender, price, amountOfSlbToken);
 
         /**
          * @notice if has order in sell book, and price >= min sell price
          */
         uint256 sellPricePointer = minSellPrice;
-        uint256 amountReflect = amountOfBaseToken;
+        uint256 amountReflect = amountOfSlbToken;
         if (minSellPrice > 0 && price >= minSellPrice) {
             while (
                 amountReflect > 0 &&
@@ -74,21 +79,38 @@ contract OrderBook is IOrderBook, ReentrancyGuard {
                             minSellPrice = higherPrice;
                         }
 
-                        amountReflect =
-                            amountReflect -
-                            sellOrdersInStep[sellPricePointer][i].amount;
+                        Order memory order = sellOrdersInStep[sellPricePointer][
+                            i
+                        ];
+
+                        amountReflect -= order.amount;
+
+                        // settle trade
+                        slbToken.safeTransfer(msg.sender, order.amount);
+                        baseToken.safeTransfer(
+                            order.maker,
+                            order.amount * sellPricePointer
+                        );
 
                         // delete order from storage
                         delete sellOrdersInStep[sellPricePointer][i];
                         sellOrdersInStepCounter[sellPricePointer] -= 1;
                     } else {
-                        sellSteps[sellPricePointer].amount =
-                            sellSteps[sellPricePointer].amount -
-                            amountReflect;
-                        sellOrdersInStep[sellPricePointer][i].amount =
-                            sellOrdersInStep[sellPricePointer][i].amount -
-                            amountReflect;
+                        Order memory order = sellOrdersInStep[sellPricePointer][
+                            i
+                        ];
+
+                        sellSteps[sellPricePointer].amount -= amountReflect;
+                        sellOrdersInStep[sellPricePointer][i]
+                            .amount -= amountReflect;
                         amountReflect = 0;
+
+                        // settle trade
+                        slbToken.safeTransfer(msg.sender, order.amount);
+                        baseToken.safeTransfer(
+                            order.maker,
+                            order.amount * sellPricePointer
+                        );
                     }
                     i += 1;
                 }
@@ -108,20 +130,16 @@ contract OrderBook is IOrderBook, ReentrancyGuard {
      */
     function placeSellOrder(
         uint256 price,
-        uint256 amountOfTradeToken
+        uint256 amountOfSlbToken
     ) external override nonReentrant {
-        tradeToken.safeTransferFrom(
-            msg.sender,
-            address(this),
-            amountOfTradeToken
-        );
-        emit PlaceSellOrder(msg.sender, price, amountOfTradeToken);
+        slbToken.safeTransferFrom(msg.sender, address(this), amountOfSlbToken);
+        emit PlaceSellOrder(msg.sender, price, amountOfSlbToken);
 
         /**
          * @notice if has order in buy book, and price <= max buy price
          */
         uint256 buyPricePointer = maxBuyPrice;
-        uint256 amountReflect = amountOfTradeToken;
+        uint256 amountReflect = amountOfSlbToken;
         if (maxBuyPrice > 0 && price <= maxBuyPrice) {
             while (
                 amountReflect > 0 &&
@@ -146,21 +164,38 @@ contract OrderBook is IOrderBook, ReentrancyGuard {
                             maxBuyPrice = lowerPrice;
                         }
 
-                        amountReflect =
-                            amountReflect -
-                            buyOrdersInStep[buyPricePointer][i].amount;
+                        Order memory order = buyOrdersInStep[buyPricePointer][
+                            i
+                        ];
+
+                        amountReflect -= order.amount;
+
+                        // settle trade
+                        slbToken.safeTransfer(order.maker, order.amount);
+                        baseToken.safeTransfer(
+                            msg.sender,
+                            order.amount * buyPricePointer
+                        );
 
                         // delete order from storage
                         delete buyOrdersInStep[buyPricePointer][i];
                         buyOrdersInStepCounter[buyPricePointer] -= 1;
                     } else {
-                        buySteps[buyPricePointer].amount =
-                            buySteps[buyPricePointer].amount -
-                            amountReflect;
-                        buyOrdersInStep[buyPricePointer][i].amount =
-                            buyOrdersInStep[buyPricePointer][i].amount -
-                            amountReflect;
+                        Order memory order = buyOrdersInStep[buyPricePointer][
+                            i
+                        ];
+
+                        buySteps[buyPricePointer].amount -= amountReflect;
+                        buyOrdersInStep[buyPricePointer][i]
+                            .amount -= amountReflect;
                         amountReflect = 0;
+
+                        // settle trade
+                        slbToken.safeTransfer(order.maker, order.amount);
+                        baseToken.safeTransfer(
+                            msg.sender,
+                            order.amount * buyPricePointer
+                        );
                     }
                     i += 1;
                 }
@@ -186,7 +221,7 @@ contract OrderBook is IOrderBook, ReentrancyGuard {
             msg.sender,
             amount
         );
-        buySteps[price].amount = buySteps[price].amount + amount;
+        buySteps[price].amount += amount;
         emit DrawToBuyBook(msg.sender, price, amount);
 
         if (maxBuyPrice == 0) {

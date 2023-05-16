@@ -10,7 +10,7 @@ const parseAmount = (amount, decimals) =>
   BigNumber.from(amount).mul(BigNumber.from(10).pow(decimals));
 
 describe("OrderBook", () => {
-  let deployer, acc1, acc2, acc3, acc4, tradeToken, baseToken, book;
+  let deployer, acc1, acc2, acc3, acc4, slbToken, baseToken, book;
 
   async function deployErc20(name, symbol) {
     const token = await (
@@ -21,11 +21,11 @@ describe("OrderBook", () => {
 
   async function deploy() {
     baseToken = await deployErc20("baseToken", "baseToken");
-    tradeToken = await deployErc20("tradeToken", "tradeToken");
+    slbToken = await deployErc20("slbToken", "slbToken");
     book = await (
       await (
         await ethers.getContractFactory("OrderBook")
-      ).deploy(tradeToken.address, baseToken.address)
+      ).deploy(slbToken.address, baseToken.address)
     ).deployed();
   }
 
@@ -34,45 +34,53 @@ describe("OrderBook", () => {
     await deploy();
     await baseToken
       .connect(deployer)
-      .transfer(await acc1.getAddress(), parseAmount(1000, 18));
+      .transfer(await acc1.getAddress(), parseAmount(100000, 18));
     await baseToken
+      .connect(deployer)
+      .transfer(await acc2.getAddress(), parseAmount(100000, 18));
+    await baseToken
+      .connect(deployer)
+      .transfer(await acc3.getAddress(), parseAmount(100000, 18));
+    await baseToken
+      .connect(deployer)
+      .transfer(await acc4.getAddress(), parseAmount(100000, 18));
+
+    await slbToken
+      .connect(deployer)
+      .transfer(await acc1.getAddress(), parseAmount(1000, 18));
+    await slbToken
       .connect(deployer)
       .transfer(await acc2.getAddress(), parseAmount(1000, 18));
-    await baseToken
+    await slbToken
       .connect(deployer)
       .transfer(await acc3.getAddress(), parseAmount(1000, 18));
-    await baseToken
+    await slbToken
       .connect(deployer)
       .transfer(await acc4.getAddress(), parseAmount(1000, 18));
 
-    await tradeToken
-      .connect(deployer)
-      .transfer(await acc1.getAddress(), parseAmount(1000, 18));
-    await tradeToken
-      .connect(deployer)
-      .transfer(await acc2.getAddress(), parseAmount(1000, 18));
-    await tradeToken
-      .connect(deployer)
-      .transfer(await acc3.getAddress(), parseAmount(1000, 18));
-    await tradeToken
-      .connect(deployer)
-      .transfer(await acc4.getAddress(), parseAmount(1000, 18));
+    await baseToken
+      .connect(acc1)
+      .approve(book.address, parseAmount(100000, 18));
+    await baseToken
+      .connect(acc2)
+      .approve(book.address, parseAmount(100000, 18));
+    await baseToken
+      .connect(acc3)
+      .approve(book.address, parseAmount(100000, 18));
+    await baseToken
+      .connect(acc4)
+      .approve(book.address, parseAmount(100000, 18));
 
-    await baseToken.connect(acc1).approve(book.address, parseAmount(1000, 18));
-    await baseToken.connect(acc2).approve(book.address, parseAmount(1000, 18));
-    await baseToken.connect(acc3).approve(book.address, parseAmount(1000, 18));
-    await baseToken.connect(acc4).approve(book.address, parseAmount(1000, 18));
-
-    await tradeToken.connect(acc1).approve(book.address, parseAmount(1000, 18));
-    await tradeToken.connect(acc2).approve(book.address, parseAmount(1000, 18));
-    await tradeToken.connect(acc3).approve(book.address, parseAmount(1000, 18));
-    await tradeToken.connect(acc4).approve(book.address, parseAmount(1000, 18));
+    await slbToken.connect(acc1).approve(book.address, parseAmount(1000, 18));
+    await slbToken.connect(acc2).approve(book.address, parseAmount(1000, 18));
+    await slbToken.connect(acc3).approve(book.address, parseAmount(1000, 18));
+    await slbToken.connect(acc4).approve(book.address, parseAmount(1000, 18));
   });
 
   describe("#place buy order not matching", () => {
     it("should not buy if not enough money", async () => {
       await expect(
-        book.connect(acc1).placeBuyOrder(0, parseAmount(1001, 18))
+        book.connect(acc1).placeBuyOrder(1, parseAmount(100001, 18))
       ).eventually.rejectedWith(
         "VM Exception while processing transaction: reverted with reason string 'ERC20: insufficient allowance'"
       );
