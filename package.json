@@ -11,7 +11,8 @@
     "preinstall": "npx only-allow pnpm",
     "compile": "hardhat compile",
     "test": "hardhat test",
-    "deploy-contracts": "hardhat run --network local scripts/deploy.js"
+    "deploy-contracts": "hardhat run --network local scripts/deploy.js",
+    "benchmark": "hardhat run --network local scripts/benchmark.js"
   },
   "author": "George Ungureanu Vranceanu",
   "license": "MIT",
