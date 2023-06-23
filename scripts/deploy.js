@@ -8,7 +8,7 @@ import hardhat from "hardhat";
 const ethers = hardhat.ethers;
 
 async function main() {
-  const myAddress = "0x99D95fD49544De3BE43Bf905a2fc47006C0A4afC";
+  const myAddress =  process.env.ADDRESS ?? "0x99D95fD49544De3BE43Bf905a2fc47006C0A4afC";
 
   // Deploy Contract
   const [owner, addr1, addr2, addr3] = await ethers.getSigners();
